@@ -5,6 +5,7 @@
 
 all:
 	@make -s --no-print-directory build -C 01-cubes
+	@make -s --no-print-directory build -C 01-cubes-fromsource
 #embedded @make -s --no-print-directory -C 02-metaballs
 	@make -s --no-print-directory build -C 03-raymarch
 	@make -s --no-print-directory build -C 04-mesh
@@ -45,6 +46,7 @@ all:
 
 rebuild:
 	@make -s --no-print-directory rebuild -C 01-cubes
+	@make -s --no-print-directory rebuild -C 01-cubes-fromsource
 #embedded @make -s --no-print-directory rebuild -C 02-metaballs
 	@make -s --no-print-directory rebuild -C 03-raymarch
 	@make -s --no-print-directory rebuild -C 04-mesh

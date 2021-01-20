@@ -542,7 +542,8 @@ or _OPTIONS["with-combined-examples"] then
 	exampleProject(_OPTIONS["with-combined-examples"]
 		, "00-helloworld"
 		, "01-cubes"
-		, "02-metaballs"
+                , "01-cubes-fromsource"
+                , "02-metaballs"
 		, "03-raymarch"
 		, "04-mesh"
 		, "05-instancing"

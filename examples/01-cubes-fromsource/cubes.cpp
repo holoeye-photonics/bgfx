@@ -204,7 +204,71 @@ public:
 			);
 
 		// Create program from shaders.
-		m_program = loadProgram("vs_cubes", "fs_cubes");
+		bgfx::UniformInfo mvp { "u_modelViewProj", bgfx::UniformType::Mat4, 1 };
+
+		const char *vshadercode = nullptr;
+		const char *fshadercode = nullptr;
+		int version = 0;
+
+		if (bgfx::getRendererType() == bgfx::RendererType::OpenGL ||
+			bgfx::getRendererType() == bgfx::RendererType::OpenGLES)
+		{
+			version = 100;
+
+			vshadercode =
+				"attribute vec3 a_position;\n"
+				"attribute vec4 a_color0;\n"
+				"varying vec4 v_color0;\n"
+				"uniform mat4 u_modelViewProj;\n\n"
+
+				"void main()\n"
+				"{\n"
+				"  gl_Position = u_modelViewProj * vec4(a_position, 1.0);\n"
+				"  v_color0 = a_color0;\n"
+				"};\n";
+
+			fshadercode =
+				"varying vec4 v_color0;\n\n"
+
+				"void main()\n"
+				"{\n"
+				"  gl_FragColor = v_color0;\n"
+				"}\n";
+		}
+
+		if (bgfx::getRendererType() == bgfx::RendererType::Direct3D9 ||
+			bgfx::getRendererType() == bgfx::RendererType::Direct3D11 ||
+			bgfx::getRendererType() == bgfx::RendererType::Direct3D12)
+		{
+			vshadercode =
+				"void main(\n"
+				"  uniform float4x4 u_modelViewProj,\n"
+				"  in  float3 a_position :POSITION,\n"
+				"  in  float4 a_color0 :COLOR0,\n"
+				"  out float4 v_position :POSITION,\n"
+				"  out float4 v_color0 :COLOR0\n"
+				")\n"
+				"{\n"
+				"  v_position = mul(u_modelViewProj, float4(a_position, 1.0));\n"
+				"  v_color0 = a_color0;\n"
+				"};\n";
+
+			fshadercode =
+				"void main(\n"
+				"  in  float4 v_color0 :COLOR0,\n"
+				"  out float4 color :COLOR\n"
+				")\n"
+				"{\n"
+				"  color = v_color0;\n"
+				"}\n";
+		}
+
+		BX_ASSERT(vshadercode != nullptr && fshadercode != nullptr, "Failed to generate shaders.");
+
+		auto vshader = bgfx::createShader('V', bgfx::makeRef(vshadercode, (uint32_t)strlen(vshadercode) + 1), &mvp, 1, version);
+		auto fshader = bgfx::createShader('F', bgfx::makeRef(fshadercode, (uint32_t)strlen(fshadercode) + 1), nullptr, 0, version);
+
+		m_program = bgfx::createProgram(vshader, fshader, true);
 
 		m_timeOffset = bx::getHPCounter();
 

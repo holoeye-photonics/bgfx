@@ -9,6 +9,9 @@
 #include <bgfx/embedded_shader.h>
 #include <bx/file.h>
 #include <bx/mutex.h>
+#include <bx/readerwriter.h>
+
+#include <cstdio>
 
 #include "topology.h"
 
@@ -4247,6 +4250,101 @@ namespace bgfx
 	{
 		BX_ASSERT(NULL != _mem, "_mem can't be NULL");
 		return s_ctx->createShader(_mem);
+	}
+
+	ShaderHandle createShader(char _shaderType, const Memory *_shaderCode,
+							  const UniformInfo *_uniforms, int _uniformsCount, int _version)
+	{
+		BX_ASSERT(_shaderType == 'V' || _shaderType == 'F' || _shaderType == 'C', "Invalid _shaderType");
+		BX_ASSERT(NULL != _shaderCode, "_shaderCode can't be NULL");
+
+		bx::MemoryBlock shaderfile(g_allocator);
+		bx::MemoryWriter writer(&shaderfile);
+		bx::Error err;
+
+		// write the header
+		const unsigned char headerVersion = 8;
+
+		bx::write(&writer, MAKEFOURCC(_shaderType, 'S', 'H', headerVersion), &err);
+
+		uint32_t hashIn = 0;
+		bx::write(&writer, hashIn, &err);
+
+		uint32_t hashOut = 0;
+		bx::write(&writer, hashOut, &err);
+
+		// write uniforms
+		uint16_t uniformCount = (uint16_t)_uniformsCount;
+		bx::write(&writer, uniformCount, &err);
+
+		for (int i = 0; i < _uniformsCount; ++i)
+		{
+			const UniformInfo &u = _uniforms[i];
+
+			const size_t len = strlen(u.name);
+
+			BX_ASSERT(len >= 1 && len < 256, "Invalid name length");
+
+			bx::write(&writer, (uint8_t)len, &err);  // string size
+			bx::write(&writer, (void*)u.name, (int32_t)len, &err);  // string
+
+			bx::write(&writer, (uint8_t)u.type, &err);  // type
+
+			bx::write(&writer, (uint8_t)0, &err);  // num
+
+			bx::write(&writer, (uint16_t)0, &err);  // regindex
+
+			bx::write(&writer, (uint16_t)u.num, &err);  // regcount
+
+			bx::write(&writer, (uint16_t)0, &err);  // texinfo
+		}
+
+		// add a shader size of zero now
+		const int64_t shaderSizePos = bx::seek(&writer);
+
+		bx::write(&writer, (uint32_t)0, &err);
+
+		switch (bgfx::getRendererType())
+		{
+		case bgfx::RendererType::Direct3D9:
+		case bgfx::RendererType::Direct3D11:
+		case bgfx::RendererType::Direct3D12:
+			bx::write(&writer, _shaderCode->data, _shaderCode->size, &err);
+			break;
+
+		case bgfx::RendererType::OpenGL:
+		case bgfx::RendererType::OpenGLES:
+			if (_version >= 100)
+			{
+				char ver[16];
+
+				int len = sprintf(ver, "#version %i\n", _version);
+
+				bx::write(&writer, (void*)ver, len, &err);
+			}
+
+			bx::write(&writer, _shaderCode->data, _shaderCode->size, &err);
+			break;
+
+		case bgfx::RendererType::Noop:
+		case bgfx::RendererType::Gnm:
+		case bgfx::RendererType::Metal:
+		case bgfx::RendererType::Nvn:
+		case bgfx::RendererType::Vulkan:
+		case bgfx::RendererType::WebGPU:
+		case bgfx::RendererType::Count:
+			BX_ASSERT(false, "Unsupported");
+			return BGFX_INVALID_HANDLE;
+		}
+
+		// write the correct size into the header
+		uint32_t shaderSize = (uint32_t)(bx::seek(&writer) - (shaderSizePos + 4));
+
+		bx::seek(&writer, shaderSizePos, bx::Whence::Begin);
+
+		bx::write(&writer, shaderSize, &err);
+
+		return createShader(bgfx::copy(shaderfile.more(), (uint32_t)bx::seek(&writer, 0, bx::Whence::End)));
 	}
 
 	uint16_t getShaderUniforms(ShaderHandle _handle, UniformHandle* _uniforms, uint16_t _max)

@@ -2529,6 +2529,25 @@ namespace bgfx
 	///
 	ShaderHandle createShader(const Memory* _mem);
 
+	/// Create shader from source code.
+	///
+	/// @param[in] _shaderType The type of shader we are creating.
+	/// @param[in] _shaderCode The source code of the shader.
+	/// @param[in] _uniforms The uniforms of the shader.
+	/// @param[in] _uniformsCount The number of uniforms of the shader.
+	/// @param[in] _version The version the shader is built for.
+	/// @returns Shader handle.
+	///
+	/// @attention C99 equivalent is `bgfx_create_shader`.
+	///
+	ShaderHandle createShader(
+		  char _shaderType
+		, const Memory *_shaderCode
+		, const UniformInfo *_uniforms
+		, int _uniformsCount
+		, int _version
+	);
+
 	/// Returns the number of uniforms and uniform handles used inside a shader.
 	///
 	/// @param[in] _handle Shader handle.

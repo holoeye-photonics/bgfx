@@ -19,6 +19,12 @@
 #	include <objc/message.h>
 #endif // BX_PLATFORM_OSX
 
+#if BGFX_CONFIG_RENDERER_DIRECT3D9 || BGFX_CONFIG_RENDERER_DIRECT3D11 || BGFX_CONFIG_RENDERER_DIRECT3D12
+	#include <d3dcompiler.h>
+	#include "shader_dxbc.h"
+	#include <string>
+#endif
+
 BX_ERROR_RESULT(BGFX_ERROR_TEXTURE_VALIDATION,  BX_MAKEFOURCC('b', 'g', 0, 1) );
 
 namespace bgfx
@@ -4252,6 +4258,63 @@ namespace bgfx
 		return s_ctx->createShader(_mem);
 	}
 
+	// TODO: This could be a general function also used by the OpenGL shader code
+	void PrintCode(const Memory *_shader, const std::string &_error)
+	{
+		int32_t source = 0;
+		int32_t line = 0;
+		int32_t column = 0;
+		int32_t start = 0;
+		int32_t end = INT32_MAX;
+
+		bool found = false
+			|| 3 == sscanf(_error.c_str(), "(%u,%u-%u):", &line, &column, &source)  // D3DCompile error
+			|| 3 == sscanf(_error.c_str(), "%u:%u(%u):", &source, &line, &column)
+			|| 2 == sscanf(_error.c_str(), "(%u,%u):", &line, &column)
+			;
+
+		if (found
+			&& 0 != line)
+		{
+			start = 1; //bx::uint32_imax(1, line-10);
+			end = line + 10;
+		}
+
+		extern void PrintCode(const Memory *_code, const std::string &error, int32_t _line, int32_t _start, int32_t _end, int32_t _column);
+
+		PrintCode(_shader, _error, line, start, end, column);
+	}
+
+	void PrintCode(const Memory *_code, const std::string &error, int32_t _line, int32_t _start, int32_t _end, int32_t _column)
+	{
+		BX_TRACE("Code:\n---");
+
+		bx::LineReader reader((const char*)_code->data);
+		for (int32_t line = 1; !reader.isDone() && line < _end; ++line)
+		{
+			bx::StringView strLine = reader.next();
+
+			if (line >= _start)
+			{
+				if (_line == line)
+				{
+					BX_TRACE(">>> %3d: %.*s", line, strLine.getLength(), strLine.getPtr());
+					if (-1 != _column)
+					{
+						BX_TRACE(">>>     %*s", _column, "^");
+					}
+					BX_TRACE(">>>     %s", error.c_str());
+				}
+				else
+				{
+					BX_TRACE("    %3d: %.*s", line, strLine.getLength(), strLine.getPtr());
+				}
+			}
+		}
+
+		BX_TRACE("---");
+	}
+
 	ShaderHandle createShader(char _shaderType, const Memory *_shaderCode,
 							  const UniformInfo *_uniforms, int _uniformsCount, int _version)
 	{
@@ -4309,11 +4372,159 @@ namespace bgfx
 		case bgfx::RendererType::Direct3D9:
 		case bgfx::RendererType::Direct3D11:
 		case bgfx::RendererType::Direct3D12:
-			bx::write(&writer, _shaderCode->data, _shaderCode->size, &err);
+#if BGFX_CONFIG_RENDERER_DIRECT3D9 || BGFX_CONFIG_RENDERER_DIRECT3D11 || BGFX_CONFIG_RENDERER_DIRECT3D12
+		{
+			static HMODULE d3dcompilerdll = NULL;
+			static pD3DCompile d3dcompile = NULL;
+
+			if (d3dcompilerdll == NULL)
+			{
+				d3dcompilerdll = LoadLibrary(D3DCOMPILER_DLL);
+			}
+
+			if (d3dcompilerdll == NULL)
+			{
+				BX_ASSERT(false, "Failed to load " D3DCOMPILER_DLL_A);
+				return BGFX_INVALID_HANDLE;
+			}
+
+			if (d3dcompile == NULL)
+			{
+				d3dcompile = (pD3DCompile) GetProcAddress(d3dcompilerdll, "D3DCompile");
+			}
+
+			if (d3dcompile == NULL)
+			{
+				BX_ASSERT(false, "Failed to get function D3DCompile from " D3DCOMPILER_DLL_A);
+				return BGFX_INVALID_HANDLE;
+			}
+
+			const char *profile = nullptr;
+
+			// TODO: Handle _version?
+
+			switch (_shaderType)
+			{
+			case 'V':
+				profile = "vs_5_0";
+				break;
+			case 'F':
+				profile = "ps_5_0";
+				break;
+			case 'C':
+				profile = "cs_5_0";
+				break;
+			}
+
+			UINT compileConstant = D3DCOMPILE_ENABLE_BACKWARDS_COMPATIBILITY;
+			UINT compileEffectConstants = 0;
+
+#if BGFX_CONFIG_DEBUG
+			compileConstant |= D3DCOMPILE_DEBUG;
+#endif
+
+			ID3DBlob *compiledcode = nullptr;
+			ID3DBlob *error = nullptr;
+
+			HRESULT res = d3dcompile(
+							_shaderCode->data,
+							_shaderCode->size,
+							"\\",  // this makes parsing the error easier
+							NULL,
+							NULL,
+							"main",
+							profile,
+							compileConstant,
+							compileEffectConstants,
+							&compiledcode,
+							&error
+			);
+
+			if (res != S_OK)
+			{
+				std::string compileError;
+
+				if (error != nullptr)
+				{
+					std::string errorstr = (const char*)error->GetBufferPointer();
+
+					size_t pos = errorstr.rfind('\\');
+
+					if (pos != std::string::npos)
+					{
+						compileError = errorstr.substr(pos + 1);
+					}
+					else
+					{
+						compileError = std::move(errorstr);
+					}
+				}
+				else
+				{
+					compileError = "<Unknown>";
+				}
+
+				PrintCode(_shaderCode, compileError);
+
+				if (compiledcode != nullptr)
+					compiledcode->Release();
+
+				if (error != nullptr)
+					error->Release();
+
+				return BGFX_INVALID_HANDLE;
+			}
+
+			bgfx::DxbcContext dxbc;
+			std::memset(&dxbc.header, 0, sizeof(bgfx::DxbcContext::Header));
+			std::memset(&dxbc.chunksFourcc, 0, sizeof(dxbc.chunksFourcc));
+			dxbc.inputSignature.key = 0;
+			dxbc.outputSignature.key = 0;
+			dxbc.shader.version = 0;
+			dxbc.shader.shex = false;
+			dxbc.shader.aon9 = false;
+			dxbc.sfi0.data = 0;
+
+			const bool aon9 = false;
+
+			dxbc.header.numChunks = 1;
+			dxbc.chunksFourcc[0] = BX_MAKEFOURCC('S', 'H', 'D', 'R');
+
+			if (aon9)
+			{
+				dxbc.chunksFourcc[dxbc.header.numChunks++] = BX_MAKEFOURCC('A', 'o', 'n', '9');
+			}
+
+			//ID3DBlob *strippedcode = nullptr;
+			//D3DStripShader(compiledcode->GetBufferPointer(), compiledcode->GetBufferSize(), D3DCOMPILER_STRIP_REFLECTION_DATA | D3DCOMPILER_STRIP_TEST_BLOBS, &strippedcode);
+
+			size_t size = compiledcode->GetBufferSize();
+			void *ptr = compiledcode->GetBufferPointer();
+
+			dxbc.shader.byteCode.resize(size);
+
+			std::memcpy(dxbc.shader.byteCode.data(), ptr, size);
+
+			// make sure the dxbc write function gets the correct offset
+			bx::seek(&writer, 0, bx::Whence::End);
+
+			bgfx::write(&writer, dxbc, &err);
+
+			compiledcode->Release();
+
+			if (error != nullptr)
+				error->Release();
+
 			break;
+		}
+#else
+			BX_ASSERT(false, "Unsupported");
+			return BGFX_INVALID_HANDLE;
+#endif
 
 		case bgfx::RendererType::OpenGL:
 		case bgfx::RendererType::OpenGLES:
+#if BGFX_CONFIG_RENDERER_OPENGL || BGFX_CONFIG_RENDERER_OPENGLES
 			if (_version >= 100)
 			{
 				char ver[16];
@@ -4325,6 +4536,10 @@ namespace bgfx
 
 			bx::write(&writer, _shaderCode->data, _shaderCode->size, &err);
 			break;
+#else
+			BX_ASSERT(false, "Unsupported");
+			return BGFX_INVALID_HANDLE;
+#endif
 
 		case bgfx::RendererType::Noop:
 		case bgfx::RendererType::Gnm:

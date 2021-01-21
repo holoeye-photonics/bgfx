@@ -4197,7 +4197,7 @@ namespace bgfx { namespace d3d11
 				if (isdxbc == MAKEFOURCC('D', 'X', 'B', 'C'))
 				{
 					code = dxbc.shader.byteCode.data();
-					shaderSize = dxbc.shader.byteCode.size();
+					shaderSize = (uint32_t) dxbc.shader.byteCode.size();
 
 					// fix wrong position in memory
 					bx::seek(&reader, -1);

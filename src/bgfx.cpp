@@ -4319,7 +4319,7 @@ namespace bgfx
 
 	ShaderHandle createShader(char _shaderType, const Memory *_shaderCode,
 							  const UniformInfo *_uniforms, int _uniformsCount, int _version,
-							  const Attrib::Enum *_attributes, int _attributesCount)
+							  const Attrib::Enum *_attributes, int _attributesCount, int _constantBufferSize)
 	{
 		BX_ASSERT(_shaderType == 'V' || _shaderType == 'F' || _shaderType == 'C', "Invalid _shaderType");
 		BX_ASSERT(NULL != _shaderCode, "_shaderCode can't be NULL");
@@ -4561,7 +4561,9 @@ namespace bgfx
 				bx::write(&writer, attribToId( _attributes[a] ), &err);
 			}
 
-			bx::write(&writer, (uint16_t)0, &err); // buffer size
+			BX_ASSERT((_constantBufferSize % 16) == 0, "The constant buffer size has to be a multiple of 16");
+
+			bx::write(&writer, (uint16_t)_constantBufferSize, &err); // constant buffer size
 
 			break;
 		}

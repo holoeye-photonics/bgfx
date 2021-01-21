@@ -4364,6 +4364,7 @@ namespace bgfx
 
 		// add a shader size of zero now
 		const int64_t shaderSizePos = bx::seek(&writer);
+		uint32_t shaderSize = 0;
 
 		bx::write(&writer, (uint32_t)0, &err);
 
@@ -4506,10 +4507,17 @@ namespace bgfx
 
 			bgfx::write(&writer, dxbc, &err);
 
+			shaderSize = (uint32_t)(bx::seek(&writer) - (shaderSizePos + 4));
+
 			compiledcode->Release();
 
 			if (error != nullptr)
 				error->Release();
+
+			// add footer
+			bx::write(&writer, (uint8_t)0, &err); // numAttrs
+
+			bx::write(&writer, (uint16_t)0, &err); // buffer size
 
 			break;
 		}
@@ -4531,6 +4539,8 @@ namespace bgfx
 			}
 
 			bx::write(&writer, _shaderCode->data, _shaderCode->size, &err);
+
+			shaderSize = (uint32_t)(bx::seek(&writer) - (shaderSizePos + 4));
 			break;
 #else
 			BX_ASSERT(false, "Unsupported");
@@ -4549,8 +4559,6 @@ namespace bgfx
 		}
 
 		// write the correct size into the header
-		uint32_t shaderSize = (uint32_t)(bx::seek(&writer) - (shaderSizePos + 4));
-
 		bx::seek(&writer, shaderSizePos, bx::Whence::Begin);
 
 		bx::write(&writer, shaderSize, &err);

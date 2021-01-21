@@ -265,7 +265,10 @@ public:
 
 		BX_ASSERT(vshadercode != nullptr && fshadercode != nullptr, "Failed to generate shaders.");
 
-		auto vshader = bgfx::createShader('V', bgfx::makeRef(vshadercode, (uint32_t)strlen(vshadercode) + 1), &mvp, 1, version);
+		const int attsCount = 2;
+		const bgfx::Attrib::Enum atts[attsCount] = { bgfx::Attrib::Position, bgfx::Attrib::Color0 };
+
+		auto vshader = bgfx::createShader('V', bgfx::makeRef(vshadercode, (uint32_t)strlen(vshadercode) + 1), &mvp, 1, version, atts, attsCount);
 		auto fshader = bgfx::createShader('F', bgfx::makeRef(fshadercode, (uint32_t)strlen(fshadercode) + 1), nullptr, 0, version);
 
 		m_program = bgfx::createProgram(vshader, fshader, true);

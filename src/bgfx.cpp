@@ -4315,8 +4315,11 @@ namespace bgfx
 		BX_TRACE("---");
 	}
 
+	#define CREATESHADER_STRIP 0
+
 	ShaderHandle createShader(char _shaderType, const Memory *_shaderCode,
-							  const UniformInfo *_uniforms, int _uniformsCount, int _version)
+							  const UniformInfo *_uniforms, int _uniformsCount, int _version,
+							  const Attrib::Enum *_attributes, int _attributesCount)
 	{
 		BX_ASSERT(_shaderType == 'V' || _shaderType == 'F' || _shaderType == 'C', "Invalid _shaderType");
 		BX_ASSERT(NULL != _shaderCode, "_shaderCode can't be NULL");
@@ -4378,6 +4381,16 @@ namespace bgfx
 			static HMODULE d3dcompilerdll = NULL;
 			static pD3DCompile d3dcompile = NULL;
 
+#if CREATESHADER_STRIP
+			typedef HRESULT(WINAPI
+				*pD3DStripShader)(_In_reads_bytes_(BytecodeLength) LPCVOID pShaderBytecode,
+					_In_ SIZE_T BytecodeLength,
+					_In_ UINT uStripFlags,
+					_Out_ ID3DBlob** ppStrippedBlob);
+
+			static pD3DStripShader d3dstripshader = NULL;
+#endif
+
 			if (d3dcompilerdll == NULL)
 			{
 				d3dcompilerdll = LoadLibrary(D3DCOMPILER_DLL);
@@ -4391,7 +4404,7 @@ namespace bgfx
 
 			if (d3dcompile == NULL)
 			{
-				d3dcompile = (pD3DCompile) GetProcAddress(d3dcompilerdll, "D3DCompile");
+				d3dcompile = (pD3DCompile)GetProcAddress(d3dcompilerdll, "D3DCompile");
 			}
 
 			if (d3dcompile == NULL)
@@ -4399,6 +4412,19 @@ namespace bgfx
 				BX_ASSERT(false, "Failed to get function D3DCompile from " D3DCOMPILER_DLL_A);
 				return BGFX_INVALID_HANDLE;
 			}
+
+#if CREATESHADER_STRIP
+			if (d3dstripshader == NULL)
+			{
+				d3dstripshader = (pD3DStripShader)GetProcAddress(d3dcompilerdll, "D3DStripShader");
+			}
+
+			if (d3dstripshader == NULL)
+			{
+				BX_ASSERT(false, "Failed to get function D3DStripShader from " D3DCOMPILER_DLL_A);
+				return BGFX_INVALID_HANDLE;
+			}
+#endif
 
 			const char *profile = nullptr;
 
@@ -4428,17 +4454,17 @@ namespace bgfx
 			ID3DBlob *error = nullptr;
 
 			HRESULT res = d3dcompile(
-							_shaderCode->data,
-							_shaderCode->size,
-							"\\",  // this makes parsing the error easier
-							NULL,
-							NULL,
-							"main",
-							profile,
-							compileConstant,
-							compileEffectConstants,
-							&compiledcode,
-							&error
+				_shaderCode->data,
+				_shaderCode->size,
+				"\\",  // this makes parsing the error easier
+				NULL,
+				NULL,
+				"main",
+				profile,
+				compileConstant,
+				compileEffectConstants,
+				&compiledcode,
+				&error
 			);
 
 			if (res != S_OK)
@@ -4492,11 +4518,19 @@ namespace bgfx
 			// add the shader code
 			dxbc.chunksFourcc[dxbc.header.numChunks++] = BX_MAKEFOURCC('S', 'H', 'D', 'R');
 
-			//ID3DBlob *strippedcode = nullptr;
-			//D3DStripShader(compiledcode->GetBufferPointer(), compiledcode->GetBufferSize(), D3DCOMPILER_STRIP_REFLECTION_DATA | D3DCOMPILER_STRIP_TEST_BLOBS, &strippedcode);
-
 			size_t size = compiledcode->GetBufferSize();
 			void *ptr = compiledcode->GetBufferPointer();
+
+#if CREATESHADER_STRIP
+			ID3DBlob *strippedcode = nullptr;
+			res = d3dstripshader(compiledcode->GetBufferPointer(), compiledcode->GetBufferSize(), D3DCOMPILER_STRIP_REFLECTION_DATA | D3DCOMPILER_STRIP_TEST_BLOBS, &strippedcode);
+
+			if (res == S_OK)
+			{
+				size = strippedcode->GetBufferSize();
+				ptr  = strippedcode->GetBufferPointer();
+			}
+#endif
 
 			dxbc.shader.byteCode.resize(size);
 
@@ -4511,11 +4545,21 @@ namespace bgfx
 
 			compiledcode->Release();
 
+#if CREATESHADER_STRIP
+			if(strippedcode != nullptr)
+				strippedcode->Release();
+#endif
+
 			if (error != nullptr)
 				error->Release();
 
 			// add footer
-			bx::write(&writer, (uint8_t)0, &err); // numAttrs
+			bx::write(&writer, (uint8_t)_attributesCount, &err); // numAttrs
+
+			for (int a = 0; a < _attributesCount; ++a)
+			{
+				bx::write(&writer, attribToId( _attributes[a] ), &err);
+			}
 
 			bx::write(&writer, (uint16_t)0, &err); // buffer size
 

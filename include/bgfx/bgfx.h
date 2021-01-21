@@ -2536,6 +2536,8 @@ namespace bgfx
 	/// @param[in] _uniforms The uniforms of the shader.
 	/// @param[in] _uniformsCount The number of uniforms of the shader.
 	/// @param[in] _version The version the shader is built for.
+	/// @param[in] _attributes The attributes used in the shader. Needed for Direct3D.
+	/// @param[in] _attributesCount The number of attributes used in the shader. Needed for Direct3D.
 	/// @returns Shader handle.
 	///
 	/// @attention C99 equivalent is `bgfx_create_shader`.
@@ -2546,6 +2548,8 @@ namespace bgfx
 		, const UniformInfo *_uniforms
 		, int _uniformsCount
 		, int _version
+		, const Attrib::Enum *_attributes = NULL
+		, int _attributesCount = 0
 	);
 
 	/// Returns the number of uniforms and uniform handles used inside a shader.

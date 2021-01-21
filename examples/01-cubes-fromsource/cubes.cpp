@@ -245,8 +245,8 @@ public:
 				"  uniform float4x4 u_modelViewProj,\n"
 				"  in  float3 a_position :POSITION,\n"
 				"  in  float4 a_color0 :COLOR0,\n"
-				"  out float4 v_position :SV_POSITION,\n"
-				"  out float4 v_color0 :COLOR0\n"
+				"  out float4 v_color0 :COLOR0,\n"
+				"  out float4 v_position :SV_POSITION\n"
 				")\n"
 				"{\n"
 				"  v_position = mul(u_modelViewProj, float4(a_position, 1.0));\n"
@@ -268,7 +268,7 @@ public:
 		const int attsCount = 2;
 		const bgfx::Attrib::Enum atts[attsCount] = { bgfx::Attrib::Position, bgfx::Attrib::Color0 };
 
-		const int constBufferSize = 16;
+		const int constBufferSize = 64;
 
 		auto vshader = bgfx::createShader('V', bgfx::makeRef(vshadercode, (uint32_t)strlen(vshadercode) + 1), &mvp, 1, version, atts, attsCount, constBufferSize);
 		auto fshader = bgfx::createShader('F', bgfx::makeRef(fshadercode, (uint32_t)strlen(fshadercode) + 1), nullptr, 0, version, atts, attsCount, constBufferSize);

@@ -4165,11 +4165,12 @@ namespace bgfx { namespace d3d11
 
 		const Memory* temp = NULL;
 
+		DxbcContext dxbc;
+
 		if (!isShaderType(magic, 'C'))
 		{
 			bx::MemoryReader rd(code, shaderSize);
 
-			DxbcContext dxbc;
 			bx::Error err;
 			read(&rd, dxbc, &err);
 
@@ -4187,6 +4188,20 @@ namespace bgfx { namespace d3d11
 				dxbcHash(temp->data + 20, size - 20, temp->data + 4);
 
 				code = temp->data;
+			}
+			else
+			{
+				// check for a saved DXBC block
+				uint32_t isdxbc = * (uint32_t*) dxbc.shader.byteCode.data();
+
+				if (isdxbc == MAKEFOURCC('D', 'X', 'B', 'C'))
+				{
+					code = dxbc.shader.byteCode.data();
+					shaderSize = dxbc.shader.byteCode.size();
+
+					// fix wrong position in memory
+					bx::seek(&reader, -1);
+				}
 			}
 		}
 

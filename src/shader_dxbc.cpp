@@ -2061,6 +2061,13 @@ namespace bgfx
 				break;
 
 			case BX_MAKEFOURCC('A', 'o', 'n', '9'): // Contains DX9BC for feature level 9.x (*s_4_0_level_9_*) shaders.
+				chunkOffset[idx] = uint32_t(bx::seek(_writer) - dxbcOffset);
+				size += bx::write(_writer, BX_MAKEFOURCC('A', 'o', 'n', '9'), _err);
+				size += bx::write(_writer, uint32_t(0), _err);
+				chunkSize[idx] = 0;
+				size += chunkSize[idx++];
+				break;
+
 			case BX_MAKEFOURCC('I', 'F', 'C', 'E'): // Interface.
 			case BX_MAKEFOURCC('S', 'D', 'G', 'B'): // Shader debugging info (old).
 			case BX_MAKEFOURCC('P', 'C', 'S', 'G'): // Patch constant signature.

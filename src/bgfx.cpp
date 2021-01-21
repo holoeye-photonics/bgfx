@@ -4485,15 +4485,11 @@ namespace bgfx
 			dxbc.shader.aon9 = false;
 			dxbc.sfi0.data = 0;
 
-			const bool aon9 = false;
+			// prevent any code patching
+			dxbc.chunksFourcc[dxbc.header.numChunks++] = BX_MAKEFOURCC('A', 'o', 'n', '9');
 
-			dxbc.header.numChunks = 1;
-			dxbc.chunksFourcc[0] = BX_MAKEFOURCC('S', 'H', 'D', 'R');
-
-			if (aon9)
-			{
-				dxbc.chunksFourcc[dxbc.header.numChunks++] = BX_MAKEFOURCC('A', 'o', 'n', '9');
-			}
+			// add the shader code
+			dxbc.chunksFourcc[dxbc.header.numChunks++] = BX_MAKEFOURCC('S', 'H', 'D', 'R');
 
 			//ID3DBlob *strippedcode = nullptr;
 			//D3DStripShader(compiledcode->GetBufferPointer(), compiledcode->GetBufferSize(), D3DCOMPILER_STRIP_REFLECTION_DATA | D3DCOMPILER_STRIP_TEST_BLOBS, &strippedcode);

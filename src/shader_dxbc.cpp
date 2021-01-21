@@ -2096,7 +2096,7 @@ namespace bgfx
 
 		for (uint32_t ii = 0; ii < numSupportedChunks; ++ii)
 		{
-			bx::seek(_writer, chunkOffset[ii]+4, bx::Whence::Begin);
+			bx::seek(_writer, dxbcOffset + chunkOffset[ii]+4, bx::Whence::Begin);
 			bx::write(_writer, chunkSize[ii], _err);
 		}
 

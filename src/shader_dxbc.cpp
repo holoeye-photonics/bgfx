@@ -1970,6 +1970,7 @@ namespace bgfx
 			case DXBC_CHUNK_SPDB:
 			case DXBC_CHUNK_RDEF:
 			case DXBC_CHUNK_STAT:
+			case BX_MAKEFOURCC('A', 'o', 'n', '9'):
 				++numSupportedChunks;
 				break;
 

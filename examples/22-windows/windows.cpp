@@ -12,10 +12,21 @@
 void cmdCreateWindow(const void* _userData);
 void cmdDestroyWindow(const void* _userData);
 
+#define RENDER_DEFERRED 1
+
 namespace
 {
 
 #define MAX_WINDOWS 8
+
+#define WINDOW_WIDTH  640
+#define WINDOW_HEIGHT 480
+
+#if RENDER_DEFERRED
+	#define MAINVIEW MAX_WINDOWS
+#else
+	#define MAINVIEW 0
+#endif
 
 struct PosColorVertex
 {
@@ -66,6 +77,20 @@ static const uint16_t s_cubeIndices[36] =
 	6, 3, 7,
 };
 
+#if RENDER_DEFERRED
+static const PosColorVertex s_deferred_vertices[] {
+	{ 0.0f, 0.0f, 0.0f, 0xFFFFFFFF },
+	{ 0.0f, (float)WINDOW_HEIGHT, 0.0f, 0xFFFFFFFF },
+	{ (float)WINDOW_WIDTH, 0.0f, 0.0f, 0xFFFFFFFF },
+	{ (float)WINDOW_WIDTH, (float)WINDOW_HEIGHT, 0.0f, 0xFFFFFFFF }
+};
+
+static const uint16_t s_deferred_indices[] {
+	0, 1, 3,
+	0, 3, 2
+};
+#endif
+
 class ExampleWindows : public entry::AppI
 {
 public:
@@ -112,7 +137,7 @@ public:
 		bgfx::setDebug(m_debug);
 
 		// Set view 0 clear state.
-		bgfx::setViewClear(0
+		bgfx::setViewClear(MAINVIEW
 			, BGFX_CLEAR_COLOR|BGFX_CLEAR_DEPTH
 			, 0x303030ff
 			, 1.0f
@@ -137,6 +162,30 @@ public:
 
 		// Create program from shaders.
 		m_program = loadProgram("vs_cubes", "fs_cubes");
+
+#if RENDER_DEFERRED
+		// Create static vertex buffer.
+		m_deferred_vbh = bgfx::createVertexBuffer(
+			// Static data can be passed with bgfx::makeRef
+			bgfx::makeRef(s_deferred_vertices, sizeof(s_deferred_vertices))
+			, PosColorVertex::ms_layout
+		);
+
+		// Create static index buffer.
+		m_deferred_ibh = bgfx::createIndexBuffer(
+			// Static data can be passed with bgfx::makeRef
+			bgfx::makeRef(s_deferred_indices, sizeof(s_deferred_indices))
+		);
+
+		// Create program from shaders.
+		m_deferred_program = loadProgram("vs_vectordisplay_fb", "fs_vectordisplay_fb");
+
+		m_framebuffer = bgfx::createFrameBuffer((uint16_t)m_width, (uint16_t)m_height, bgfx::TextureFormat::RGBA32F, BGFX_SAMPLER_UVW_CLAMP | BGFX_SAMPLER_POINT);
+
+		m_framebufferTexture = bgfx::getTexture(m_framebuffer);
+
+		s_texColor = bgfx::createUniform("s_texColor", bgfx::UniformType::Sampler);
+#endif
 
 		m_timeOffset = bx::getHPCounter();
 
@@ -240,12 +289,13 @@ public:
 			float proj[16];
 			bx::mtxProj(proj, 60.0f, float(m_width)/float(m_height), 0.1f, 100.0f, bgfx::getCaps()->homogeneousDepth);
 
-			bgfx::setViewTransform(0, view, proj);
-			bgfx::setViewRect(0, 0, 0, uint16_t(m_width), uint16_t(m_height) );
+			bgfx::setViewTransform(MAINVIEW, view, proj);
+			bgfx::setViewRect(MAINVIEW, 0, 0, uint16_t(m_width), uint16_t(m_height) );
 			// This dummy draw call is here to make sure that view 0 is cleared
 			// if no other draw calls are submitted to view 0.
-			bgfx::touch(0);
+			bgfx::touch(MAINVIEW);
 
+#if !RENDER_DEFERRED
 			// Set view and projection matrix for view 0.
 			for (uint8_t ii = 1; ii < MAX_WINDOWS; ++ii)
 			{
@@ -269,6 +319,7 @@ public:
 						);
 				}
 			}
+#endif
 
 			int64_t now = bx::getHPCounter();
 			float time = (float)( (now-m_timeOffset)/double(bx::getHPFrequency() ) );
@@ -283,7 +334,9 @@ public:
 				bgfx::dbgTextPrintf(0, 0, blink ? 0x4f : 0x04, " Multiple windows is not supported by `%s` renderer. ", bgfx::getRendererName(bgfx::getCaps()->rendererType) );
 			}
 
+#if !RENDER_DEFERRED
 			uint32_t count = 0;
+#endif
 
 			// Submit 11x11 cubes.
 			for (uint32_t yy = 0; yy < 11; ++yy)
@@ -306,11 +359,46 @@ public:
 					// Set render states.
 					bgfx::setState(BGFX_STATE_DEFAULT);
 
+#if RENDER_DEFERRED
+					bgfx::setViewFrameBuffer(MAINVIEW, m_framebuffer);
+
+					// Submit primitive for rendering.
+					bgfx::submit(MAINVIEW, m_program);
+#else
 					// Submit primitive for rendering.
 					bgfx::submit(count%MAX_WINDOWS, m_program);
 					++count;
+#endif
 				}
 			}
+
+#if RENDER_DEFERRED
+			// Render all the windows
+			float proj2[16];
+			bx::mtxOrtho(proj2, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0, 0.0f, 1000.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);
+
+			for (uint8_t w = 0; w < MAX_WINDOWS; ++w)
+			{
+				if (!bgfx::isValid(m_fbh[w]))
+					continue;
+
+				bgfx::setViewTransform(w, NULL, proj2);
+				bgfx::setViewFrameBuffer(w, m_fbh[w]);
+
+				// Set vertex and index buffer.
+				bgfx::setVertexBuffer(w, m_deferred_vbh);
+				bgfx::setIndexBuffer(m_deferred_ibh);
+
+				// Bind textures.
+				bgfx::setTexture(0, s_texColor, m_framebufferTexture);
+
+				// Set render states.
+				bgfx::setState(BGFX_STATE_DEFAULT);
+
+				// Submit primitive for rendering.
+				bgfx::submit(w, m_deferred_program);
+			}
+#endif
 
 			// Advance to next frame. Rendering thread will be kicked to
 			// process submitted rendering primitives.
@@ -324,7 +412,7 @@ public:
 
 	void createWindow()
 	{
-		entry::WindowHandle handle = entry::createWindow(rand()%1280, rand()%720, 640, 480);
+		entry::WindowHandle handle = entry::createWindow(rand()%1280, rand()%720, WINDOW_WIDTH, WINDOW_HEIGHT);
 		if (entry::isValid(handle) )
 		{
 			char str[256];
@@ -367,6 +455,17 @@ public:
 	bgfx::VertexBufferHandle m_vbh;
 	bgfx::IndexBufferHandle m_ibh;
 	bgfx::ProgramHandle m_program;
+
+#if RENDER_DEFERRED
+	bgfx::FrameBufferHandle m_framebuffer BGFX_INVALID_HANDLE;
+	bgfx::TextureHandle m_framebufferTexture BGFX_INVALID_HANDLE;
+
+	bgfx::VertexBufferHandle m_deferred_vbh BGFX_INVALID_HANDLE;
+	bgfx::IndexBufferHandle m_deferred_ibh BGFX_INVALID_HANDLE;
+	bgfx::ProgramHandle m_deferred_program BGFX_INVALID_HANDLE;
+
+	bgfx::UniformHandle s_texColor BGFX_INVALID_HANDLE;
+#endif
 
 	entry::WindowState m_windows[MAX_WINDOWS];
 	bgfx::FrameBufferHandle m_fbh[MAX_WINDOWS];
